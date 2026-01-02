@@ -30,7 +30,7 @@ jobs:
           HASH=$(echo -n $WATERMARK | md5sum | cut -d' ' -f1)
           VERIFICATION_URL="https://your-repo.netlify.app/verify?watermark=$WATERMARK"
           REPORT_ID=$(uuidgen | cut -c1-8)
-          # 生成Markdown报告
+          # 生成Markdown报告（添加自愿赞助引导）
           cat > report.md << EOF
 ## Watermark Verification Report
 **Report ID**: $REPORT_ID  
@@ -42,23 +42,22 @@ jobs:
 - Verification Hash: \`$HASH\`
 - Verification URL: [${VERIFICATION_URL}]($VERIFICATION_URL)
 - Validity: Valid (GitHub-native watermark)
-### Notes
-- This is an **automated report** (no human intervention)
-- Watermark follows \`GH:project-id\` standard format
-- For enterprise support, sponsor via [GitHub Sponsors](https://github.com/sponsors/your-username)
+### 支持项目
+这个工具完全免费开源，若对你有帮助，欢迎自愿赞助：  
+[GitHub Sponsors - 8786cod](https://github.com/sponsors/8786cod)
 EOF
           # 输出变量供后续步骤使用
           echo "REPORT_PATH=report.md" >> $GITHUB_OUTPUT
           echo "WATERMARK=$WATERMARK" >> $GITHUB_OUTPUT
       - name: Comment Report on Issue
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
             const reportContent = fs.readFileSync('${{ steps.generate_report.outputs.REPORT_PATH }}', 'utf8');
             // 评论到对应Issue
-            await github.issues.createComment({
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: ${{ github.event.issue.number }},
