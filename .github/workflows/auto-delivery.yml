@@ -1,66 +1,61 @@
 name: Auto Watermark Delivery
-# 触发条件：当Issue被创建时
 on:
   issues:
     types: [opened]
 jobs:
   deliver-verification-report:
-    # 仅当Issue标题包含[WATERMARK]时触发
     if: contains(github.event.issue.title, '[WATERMARK]')
     runs-on: ubuntu-latest
     permissions:
-      issues: write  # 允许评论Issue
+      issues: write
       contents: read
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
       - name: Generate Verification Report
         id: generate_report
-        env:
-          PROJECT_ID: ${{ github.repository }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
-          # 生成唯一水印和验证哈希
           TIMESTAMP=$(date +%s)
-          WATERMARK="GH:${{ github.repository }}-${TIMESTAMP: -6}"
-          HASH=$(echo -n $WATERMARK | md5sum | cut -d' ' -f1)
-          VERIFICATION_URL="https://your-repo.netlify.app/verify?watermark=$WATERMARK"
+          REPO="${{ github.repository }}"
+          WATERMARK="GH:${REPO}-${TIMESTAMP: -6}"
+          HASH=$(echo -n "$WATERMARK" | md5sum | cut -d' ' -f1)
+          VERIFICATION_URL="https://your-repo.netlify.app/verify?watermark=${WATERMARK}"
           REPORT_ID=$(uuidgen | cut -c1-8)
-          # 生成Markdown报告（添加自愿赞助引导）
+          TIMESTAMP_UTC=$(date -u +"%Y-%m-%d %H:%M:%S")
+          ISSUE_NUM="${{ github.event.issue.number }}"
           cat > report.md << EOF
 ## Watermark Verification Report
-**Report ID**: $REPORT_ID  
-**Project**: ${{ github.repository }}  
-**Issue Number**: #${{ github.event.issue.number }}  
-**Generated At (UTC)**: $(date -u +"%Y-%m-%d %H:%M:%S")
+**Report ID**: ${REPORT_ID}
+**Project**: ${REPO}
+**Issue Number**: #${ISSUE_NUM}
+**Generated At (UTC)**: ${TIMESTAMP_UTC}
+
 ### 水印信息
-- Watermark Content: \`$WATERMARK\`
-- Verification Hash: \`$HASH\`
-- Verification URL: [${VERIFICATION_URL}]($VERIFICATION_URL)
+- Watermark Content: \`${WATERMARK}\`
+- Verification Hash: \`${HASH}\`
+- Verification URL: [${VERIFICATION_URL}](${VERIFICATION_URL})
 - Validity: Valid (GitHub-native watermark)
+
 ### 支持项目
-这个工具完全免费开源，若对你有帮助，欢迎自愿赞助：  
+这个工具完全免费开源，若对你有帮助，欢迎自愿赞助：
 [GitHub Sponsors - 8786cod](https://github.com/sponsors/8786cod)
 EOF
-          # 输出变量供后续步骤使用
           echo "REPORT_PATH=report.md" >> $GITHUB_OUTPUT
-          echo "WATERMARK=$WATERMARK" >> $GITHUB_OUTPUT
-      - name: Comment Report on Issue
+          echo "WATERMARK=${WATERMARK}" >> $GITHUB_OUTPUT
+      - name: Comment on Issue
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const fs = require('fs');
-            const reportContent = fs.readFileSync('${{ steps.generate_report.outputs.REPORT_PATH }}', 'utf8');
-            // 评论到对应Issue
+            const report = fs.readFileSync('${{ steps.generate_report.outputs.REPORT_PATH }}', 'utf8');
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: ${{ github.event.issue.number }},
-              body: reportContent
+              body: report
             });
-            console.log("Successfully commented verification report on Issue");
