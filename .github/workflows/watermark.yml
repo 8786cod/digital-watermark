@@ -1,0 +1,55 @@
+name: Add Digital Watermark
+# 触发条件：手动触发 + 推送到包含指定目录的代码
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'assets/**'
+      - 'docs/**'
+      - 'screenshots/**'
+      - '**.png'
+      - '**.jpg'
+      - '**.jpeg'
+      - '**.gif'
+jobs:
+  watermark:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 允许提交代码
+      issues: write    # 允许创建Issue
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Setup Python Environment
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'  # 缓存依赖，加速构建
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Add Watermark to Image Assets
+        env:
+          PROJECT_ID: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 用于创建Issue
+        run: |
+          # 遍历所有图片文件，批量添加水印
+          find . -type f \( -iname "*.png" -o -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.gif" \) -not -path "./.git/*" | while read img; do
+            echo "Processing image: $img"
+            python stego_core.py "$img" "$PROJECT_ID"
+          done
+      - name: Commit & Push Watermarked Assets
+        run: |
+          # 配置Git用户信息
+          git config --global user.name "Watermark Bot"
+          git config --global user.email "watermark-bot@users.noreply.github.com"
+          # 检查是否有修改
+          if git status | grep -q "modified:"; then
+            git add .
+            git commit -m "chore: auto add digital watermark for ${{ github.repository }} [skip ci]"
+            git push
+            echo "Successfully pushed watermarked assets"
+          else
+            echo "No images to watermark, skipping commit"
+          fi
