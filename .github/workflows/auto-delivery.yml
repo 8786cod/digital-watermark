@@ -14,7 +14,6 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            // 生成水印信息
             const timestamp = Date.now();
             const repo = `${context.repo.owner}/${context.repo.repo}`;
             const watermark = `GH:${repo}-${timestamp.toString().slice(-6)}`;
@@ -22,24 +21,25 @@ jobs:
             const verifyUrl = `https://your-repo.netlify.app/verify?watermark=${watermark}`;
             const reportId = Math.random().toString(36).substring(2, 10);
 
-            // 生成报告内容
-            const report = `## Watermark Verification Report
-**Report ID**: ${reportId}
-**Project**: ${repo}
-**Issue Number**: #${context.issue.number}
-**Generated At (UTC)**: ${new Date().toUTCString()}
+            const report = `Watermark Verification Report
 
-### 水印信息
+Report ID: ${reportId}
+Project: ${repo}
+Issue Number: #${context.issue.number}
+Generated At (UTC): ${new Date().toUTCString()}
+
+
+水印信息
 - Watermark Content: \`${watermark}\`
 - Verification Hash: \`${hash}\`
 - Verification URL: [${verifyUrl}](${verifyUrl})
 - Validity: Valid (GitHub-native watermark)
 
-### 支持项目
+
+支持项目
 这个工具完全免费开源，若对你有帮助，欢迎自愿赞助：
 [GitHub Sponsors - 8786cod](https://github.com/sponsors/8786cod)`;
 
-            // 评论到Issue
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
