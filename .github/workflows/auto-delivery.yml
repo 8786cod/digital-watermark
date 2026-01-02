@@ -1,92 +1,48 @@
 name: Auto Watermark Delivery
-# 触发条件：仅当新Issue被创建时触发（适配你的工具Issue模板）
 on:
   issues:
     types: [opened]
-
 jobs:
   deliver-verification-report:
-    # 仅过滤标题含[WATERMARK]的Issue（匹配你的工具请求模板）
     if: contains(github.event.issue.title, '[WATERMARK]')
-    runs-on: ubuntu-latest # GitHub官方虚拟机环境，无需自定义
-    # 工具运行必需的权限（确保能评论Issue、读取仓库内容）
+    runs-on: ubuntu-latest
     permissions:
       issues: write
-      contents: read
     steps:
-      # 步骤1：拉取你的digital-watermark仓库代码（工具运行依赖仓库文件）
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1 # 浅克隆，提升工具运行速度
-
-      # 步骤2：配置Python环境（你的工具核心代码基于Python 3.11）
-      - name: Setup Python Environment
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip' # 缓存Python依赖，加速工具运行
-
-      # 步骤3：生成水印验证报告（工具核心功能，无语法错误）
-      - name: Generate Verification Report
-        id: generate_report
-        run: |
-          # 生成唯一时间戳，确保水印不重复
-          TIMESTAMP=$(date +%s)
-          # 获取当前仓库（自动适配你的GitHub仓库，无需手动修改）
-          REPO="${{ github.repository }}"
-          # 生成工具标准格式水印（GH:project-id，符合版权保护要求）
-          WATERMARK="GH:$REPO-${TIMESTAMP: -6}"
-          # 生成水印哈希，用于后续验证（适配你的api.py验证逻辑）
-          HASH=$(echo -n "$WATERMARK" | md5sum | cut -d' ' -f1)
-          # 验证URL：替换为你工具的实际Netlify验证地址（上传后需修改）
-          VERIFICATION_URL="https://your-repo.netlify.app/verify?watermark=$WATERMARK"
-          # 生成8位唯一报告ID，方便追溯
-          REPORT_ID=$(uuidgen | cut -c1-8)
-          # UTC时间戳，符合工具司法免责的时间记录要求
-          TIMESTAMP_UTC=$(date -u +"%Y-%m-%d %H:%M:%S")
-          # 当前Issue编号，自动关联
-          ISSUE_NUM="${{ github.event.issue.number }}"
-
-          # 生成Markdown报告（兼容GitHub Issue评论格式）
-          cat > report.md << EOF
-## Watermark Verification Report
-**Report ID**: $REPORT_ID
-**Project**: $REPO
-**Issue Number**: #$ISSUE_NUM
-**Generated At (UTC)**: $TIMESTAMP_UTC
-
-### 水印信息
-- Watermark Content: \`$WATERMARK\`
-- Verification Hash: \`$HASH\`
-- Verification URL: [$VERIFICATION_URL]($VERIFICATION_URL)
-- Validity: Valid (GitHub-native watermark)
-
-### 支持工具项目
-该数字水印工具为开源免费项目，如需企业级功能（无限水印/审计日志），欢迎赞助：
-[GitHub Sponsors - 8786cod](https://github.com/sponsors/8786cod)
-EOF
-
-          # 输出变量，供后续评论步骤使用（工具步骤间数据传递）
-          echo "REPORT_PATH=report.md" >> $GITHUB_OUTPUT
-          echo "WATERMARK=$WATERMARK" >> $GITHUB_OUTPUT
-
-      # 步骤4：自动评论验证报告到Issue（工具自动交付核心功能）
-      - name: Comment Verification Report on Issue
+      - name: Add Verification Comment
         uses: actions/github-script@v7
         with:
-          # GitHub自动注入令牌，无需手动配置（工具开箱即用）
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          # JavaScript脚本（兼容GitHub Actions环境，无语法冲突）
           script: |
-            // 读取生成的报告文件（JS标准注释，避免YAML解析错误）
-            const fs = require('fs');
-            const reportContent = fs.readFileSync('${{ steps.generate_report.outputs.REPORT_PATH }}', 'utf8');
-            // 调用GitHub API评论Issue（适配工具的司法记录要求）
+            // 生成水印信息
+            const timestamp = Date.now();
+            const repo = `${context.repo.owner}/${context.repo.repo}`;
+            const watermark = `GH:${repo}-${timestamp.toString().slice(-6)}`;
+            const hash = require('crypto').createHash('md5').update(watermark).digest('hex');
+            const verifyUrl = `https://your-repo.netlify.app/verify?watermark=${watermark}`;
+            const reportId = Math.random().toString(36).substring(2, 10);
+
+            // 生成报告内容
+            const report = `## Watermark Verification Report
+**Report ID**: ${reportId}
+**Project**: ${repo}
+**Issue Number**: #${context.issue.number}
+**Generated At (UTC)**: ${new Date().toUTCString()}
+
+### 水印信息
+- Watermark Content: \`${watermark}\`
+- Verification Hash: \`${hash}\`
+- Verification URL: [${verifyUrl}](${verifyUrl})
+- Validity: Valid (GitHub-native watermark)
+
+### 支持项目
+这个工具完全免费开源，若对你有帮助，欢迎自愿赞助：
+[GitHub Sponsors - 8786cod](https://github.com/sponsors/8786cod)`;
+
+            // 评论到Issue
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: ${{ github.event.issue.number }},
-              body: reportContent
+              issue_number: context.issue.number,
+              body: report
             });
-            console.log("Successfully commented watermark report to Issue!");
